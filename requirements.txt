@@ -1,0 +1,16 @@
+opencv-python
+av
+numpy
+Pillow
+pyinstaller
+deepface
+tf-keras
+ttkbootstrap
+# PyTorch with CUDA 11.8 support (for GPU acceleration)
+# Install manually BEFORE pip install -r requirements.txt:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+# Or for CPU only: pip install torch torchvision
+torch>=2.0.0
+torchvision>=0.15.0
+insightface>=0.7.0
+onnxruntime-gpu>=1.16.0  
