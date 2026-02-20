@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+import shutil
 from typing import Callable, Optional
 
+import av
 import cv2
 import numpy as np
 import torch
@@ -73,6 +75,41 @@ def build_output_path(input_path: str, suffix: str) -> str:
     return str(src.with_name(f"{src.stem}_{clean_suffix}{src.suffix}"))
 
 
+def _copy_file(src_path: str, dst_path: str) -> None:
+    src = Path(src_path)
+    dst = Path(dst_path)
+    if src.resolve() == dst.resolve():
+        return
+    shutil.copyfile(src, dst)
+
+
+def _mux_original_audio(video_only_path: str, original_input_path: str, final_output_path: str) -> None:
+    with av.open(original_input_path) as input_container:
+        input_audio_streams = [stream for stream in input_container.streams if stream.type == "audio"]
+        if not input_audio_streams:
+            _copy_file(video_only_path, final_output_path)
+            return
+
+        input_audio_stream = input_audio_streams[0]
+
+        with av.open(video_only_path) as processed_video_container, av.open(final_output_path, mode="w") as output_container:
+            processed_video_stream = processed_video_container.streams.video[0]
+            out_video_stream = output_container.add_stream(template=processed_video_stream)
+            out_audio_stream = output_container.add_stream(template=input_audio_stream)
+
+            for packet in processed_video_container.demux(processed_video_stream):
+                if packet.dts is None:
+                    continue
+                packet.stream = out_video_stream
+                output_container.mux(packet)
+
+            for packet in input_container.demux(input_audio_stream):
+                if packet.dts is None:
+                    continue
+                packet.stream = out_audio_stream
+                output_container.mux(packet)
+
+
 def censor_video(
     input_path: str,
     output_path: str,
@@ -82,6 +119,9 @@ def censor_video(
     detect_every_n_frames: Optional[int] = None,
     cancel_check: Optional[CancelCheckCallback] = None,
 ) -> str:
+    final_output = Path(output_path)
+    temp_video_only_output = str(final_output.with_name(f"{final_output.stem}.video_only.tmp{final_output.suffix}"))
+
     capture = cv2.VideoCapture(input_path)
     if not capture.isOpened():
         raise RuntimeError("Could not open the selected video.")
@@ -97,7 +137,7 @@ def censor_video(
     print(f"[DEBUG] Video: {width}x{height} @ {fps} FPS, {total_frames} frames")
 
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    writer = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+    writer = cv2.VideoWriter(temp_video_only_output, fourcc, fps, (width, height))
     if not writer.isOpened():
         capture.release()
         raise RuntimeError("Could not create the output MP4 file.")
@@ -167,5 +207,15 @@ def censor_video(
         detector.close()
         writer.release()
         capture.release()
+
+    try:
+        _mux_original_audio(temp_video_only_output, input_path, output_path)
+    except Exception as mux_error:
+        print(f"[WARNING] Could not preserve audio track: {mux_error}")
+        _copy_file(temp_video_only_output, output_path)
+    finally:
+        temp_path = Path(temp_video_only_output)
+        if temp_path.exists():
+            temp_path.unlink()
 
     return output_path
