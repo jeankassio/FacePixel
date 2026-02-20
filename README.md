@@ -1,4 +1,5 @@
-# FacePixel
+# FacePixel - Automatic Face Censoring for Videos
+
 <img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/b1a9f91d-3697-4e82-942b-f5cfb3c1b998" />
 
 FacePixel is a desktop application for **automatic face censoring in MP4 videos** with a modern GUI.
